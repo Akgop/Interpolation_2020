@@ -327,7 +327,12 @@ void Six_Tab_Filter(UCHAR img[512][512]) {
 
 	// Boundary Outside
 	for (int i = 0; i < 512; i++) {
-
+		img[i][510] = (36 * img[i][508] - 5 * img[i][504] + img[i][500]) / 32;//right
+		img[510][i] = (36 * img[508][i] - 5 * img[504][i] + img[500][i]) / 32;//bottom
+		img[i][509] = (img[i][510] + img[i][508]) / 2;//right
+		img[509][i] = (img[510][i] + img[508][i]) / 2;//bottom
+		img[i][511] = (2 * img[i][510] + img[i][509])/3;//right
+		img[511][i] = (2 * img[510][i] + img[509][i])/3;//bottom
 	}
 }
 
