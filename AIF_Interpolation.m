@@ -35,9 +35,25 @@ class = active + direc;     % class = 1 x 4096
 fin=fopen('./lena(512x512).raw','rb');      % open file
 gt_imgbuf=fread(fin, d_row*d_col,'uint8');  % read 512x512 ground truth
 fclose(fin);
-% Filter Optimization
 gt = reshape(gt_imgbuf, d_row, d_col);      % 1d -> 2d 512x512
 input_d = imresize(input, 2, 'box');          % 256 -> 512 double input
+% SixTab
+input_p = padarray(input_d, [4 4], 'replicate');        % Create Padded Array
+S = [1 -5 20 20 -5 1]/32;
+for i = 1:8:d_col
+    for j = 1:8:d_row
+        for k = 1:2:8   % 가로
+            temp = input_p(j+k+4, [i i+2 i+4 i+6 i+8 i+10]);
+            input_p(j+k+4, i+4) = S*temp';
+        end
+        for l = 1:8     % 세로
+            temp = input_p(i+k+4, [j j+2 j+4 j+6 j+8 j+10]);
+            input_p(i+k+4, j+4) = temp*S';
+        end
+    end
+end
+result_six = input_p(5:516, 5:516);
+% Filter Optimization
 wc = zeros(20);     wc_h = reshape(wc, [4, 100]); wc_v = reshape(wc, [4, 100]);
 for i = 1:8:d_col
     for j = 1:8:d_row
@@ -45,7 +61,7 @@ for i = 1:8:d_col
             x_h = input_d((j+(k-1)), [i i+2 i+4 i+6]);      % 1x4 block X
             x_v = input_d((i+(k-1)), [j j+2 j+4 j+6]);      
             y_h = gt((j+(k-1)), [i+1 i+3 i+5 i+7]);       % 1x4 block Y
-            y_v = input_d((i+(k-1)), [j+1 j+3 j+5 j+7]);
+            y_v = gt((i+(k-1)), [j+1 j+3 j+5 j+7]);
             wtemp_h = pinv((x_h.'*x_h))*(x_h.'*y_h);      % wc_horizontal
             wtemp_v = pinv((x_v.'*x_v))*(x_v.'*y_v);      % wc_vertical
             c = class(64*((i+7)/8 - 1)+(j+7)/8) - 1;
@@ -59,28 +75,46 @@ for i = 1:25
     wc_h(1:4, 1+4*(i-1):4+4*(i-1)) = (wc_h(1:4, 1+4*(i-1):4+4*(i-1))/q);
     wc_v(1:4, 1+4*(i-1):4+4*(i-1)) = (wc_v(1:4, 1+4*(i-1):4+4*(i-1))/q);
 end
-% Filtering
-fout=fopen('./AIF_lena(512x512).raw', 'wb');
-result = imresize(input, 2, 'box');          % 256 -> 512 input
+% Adaptive
+result = input_d;
 for i = 1:8:d_col
     for j = 1:8:d_row
         c = class(64*((i+7)/8 - 1)+(j+7)/8) - 1;
-        for k = 1:2:8
+        for k = 1:2:8   % 가로
             temp = input_d(j+k-1, [i i+2 i+4 i+6]);
             result(j+k-1, [i+1 i+3 i+5 i+7]) = temp*wc_h(1:4, 1+4*c:4+4*c);
         end
-        for l = 1:8
+        for l = 1:8     % 세로
             temp = result(i+k-1, [j j+2 j+4 j+6]);
             result(i+k-1, [j+1 j+3 j+5 j+7]) = temp*wc_v(1:4, 1+4*c:4+4*c);
+        end
+    end
+end
+% Filter Selection
+err = zeros(5); err_w = reshape(err, [1 25]);   err_s = reshape(err, [1 25]);
+for i = 1:8:d_col
+    for j = 1:8:d_row
+        c = class(64*((i+7)/8 - 1)+(j+7)/8);
+        err_w(c) = err_w(c) + sum((result(i:i+7, j:j+7) - gt(i:i+7, j:j+7)).^2, 'all');
+        err_s(c) = err_s(c) + sum((result_six(i:i+7, j:j+7) - gt(i:i+7, j:j+7)).^2, 'all');
+    end
+end
+fout=fopen('./AIF_lena(512x512).raw', 'wb');
+disp(err_w)
+disp(err_s)
+for i = 1:8:d_col
+    for j = 1:8:d_row
+        c = class(64*((i+7)/8 - 1)+(j+7)/8);
+        if err_w(c) > err_s(c)
+            result(i:i+7, j:j+7) = result_six(i:i+7, j:j+7);
         end
     end
 end
 fwrite(fout, result);
 fclose(fout);
 % RMS, PSNR
-sse = sum((result - gt).^2, 'all');
-mse = sse / (d_col * d_row);
-psnr = 20 * log10(255 / sqrt(mse));
-rms = sqrt(mse);
+sse = sum((result - gt).^2, 'all'); mse = sse / (d_col * d_row);
+psnr = 20 * log10(255 / sqrt(mse)); rms = sqrt(mse);
 disp(rms);
 disp(psnr);
+
