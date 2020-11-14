@@ -14,7 +14,7 @@ sum_active = zeros(64);   sum_active = reshape(sum_active, [1, 4096]);  % 활동
 active = zeros(64);       active = reshape(active, [1, 4096]);  % 활동성 pre-allocation
 for i = 1:4:col
     for j = 1:4:row
-        temp = input(j:j+3, i:i+3); % 4x4 block
+        temp = input(i:i+3, j:j+3); % 4x4 block
         % Laplacian filter, convolution (element-wise product -> sum)
         h = abs(sum(temp(1:3, 2:4).*H, 'all')) + abs(sum(temp(1:3, 1:3).*H, 'all')) + abs(sum(temp(2:4, 1:3).*H, 'all')) + abs(sum(temp(2:4, 2:4).*H, 'all'));
         v = abs(sum(temp(1:3, 2:4).*V, 'all')) + abs(sum(temp(1:3, 1:3).*V, 'all')) + abs(sum(temp(2:4, 1:3).*V, 'all')) + abs(sum(temp(2:4, 2:4).*V, 'all'));
@@ -44,7 +44,7 @@ for i = 1:8:d_col
     for j = 1:8:d_row
         for k = 1:2:8   % 가로
             temp = input_p(i+k+3, [j j+2 j+4 j+6 j+8 j+10]);
-            input_p(i+k+3, j+5) = S*temp';
+            input_p(i+k+3, j+5) = temp*S';
         end
         for l = 1:8     % 세로
             temp = input_p(j+l+3, [i i+2 i+4 i+6 i+8 i+10]);
@@ -58,35 +58,35 @@ wc = zeros(20);     wc_h = reshape(wc, [4, 100]); wc_v = reshape(wc, [4, 100]);
 for i = 1:8:d_col
     for j = 1:8:d_row
         for k = 1:2:8
-            x_h = input_d((j+(k-1)), [i i+2 i+4 i+6]);      % 1x4 block X
-            x_v = input_d((i+(k-1)), [j j+2 j+4 j+6]);      
-            y_h = gt((j+(k-1)), [i+1 i+3 i+5 i+7]);       % 1x4 block Y
-            y_v = gt((i+(k-1)), [j+1 j+3 j+5 j+7]);
-            wtemp_h = pinv((x_h.'*x_h))*(x_h.'*y_h);      % wc_horizontal
+            x_v = input_d((i+k-1), [j j+2 j+4 j+6]);  
+            x_h = input_d((j+k-1), [i i+2 i+4 i+6]);      % 1x4 block X 
+            y_v = gt((i+k-1), [j+1 j+3 j+5 j+7]);
+            y_h = gt((j+k-1), [i+1 i+3 i+5 i+7]);       % 1x4 block Y
             wtemp_v = pinv((x_v.'*x_v))*(x_v.'*y_v);      % wc_vertical
+            wtemp_h = pinv((x_h.'*x_h))*(x_h.'*y_h);      % wc_horizontal
             c = class(64*((i+7)/8 - 1)+(j+7)/8) - 1;
-            wc_h(1:4, 1+4*c:4+4*c) = wc_h(1:4, 1+4*c:4+4*c) + wtemp_h;
             wc_v(1:4, 1+4*c:4+4*c) = wc_v(1:4, 1+4*c:4+4*c) + wtemp_v;
+            wc_h(1:4, 1+4*c:4+4*c) = wc_h(1:4, 1+4*c:4+4*c) + wtemp_h;
         end
     end
 end
 for i = 1:25
     q = sum(class==i)*4;
-    wc_h(1:4, 1+4*(i-1):4+4*(i-1)) = (wc_h(1:4, 1+4*(i-1):4+4*(i-1))/q);
     wc_v(1:4, 1+4*(i-1):4+4*(i-1)) = (wc_v(1:4, 1+4*(i-1):4+4*(i-1))/q);
+    wc_h(1:4, 1+4*(i-1):4+4*(i-1)) = (wc_h(1:4, 1+4*(i-1):4+4*(i-1))/q);
 end
 % Adaptive
 result = input_d;
 for i = 1:8:d_col
     for j = 1:8:d_row
         c = class(64*((i+7)/8 - 1)+(j+7)/8) - 1;
-        for k = 1:2:8   % 세로
-            temp = input_d(j+k-1, [i i+2 i+4 i+6]);
-            result(j+k-1, [i+1 i+3 i+5 i+7]) = temp*wc_h(1:4, 1+4*c:4+4*c);
+        for k = 1:2:8   % 가로
+            temp = input_d(i+k-1, [j j+2 j+4 j+6]);
+            result(i+k-1, [j+1 j+3 j+5 j+7]) = temp*wc_v(1:4, 1+4*c:4+4*c);
         end
-        for l = 1:8     % 가로
-            temp = result(i+l-1, [j j+2 j+4 j+6]);
-            result(i+l-1, [j+1 j+3 j+5 j+7]) = temp*wc_v(1:4, 1+4*c:4+4*c);
+        for l = 1:8     % 세로
+            temp = result(j+l-1, [i i+2 i+4 i+6]);
+            result(j+l-1, [i+1 i+3 i+5 i+7]) = temp*wc_h(1:4, 1+4*c:4+4*c);
         end
     end
 end
@@ -95,8 +95,8 @@ err = zeros(5); err_w = reshape(err, [1 25]);   err_s = reshape(err, [1 25]);
 for i = 1:8:d_col
     for j = 1:8:d_row
         c = class(64*((i+7)/8 - 1)+(j+7)/8);
-        err_w(c) = err_w(c) + sum((result(j:j+7, i:i+7) - gt(j:j+7, i:i+7)).^2, 'all');
-        err_s(c) = err_s(c) + sum((result_six(j:j+7, i:i+7) - gt(j:j+7, i:i+7)).^2, 'all');
+        err_w(c) = err_w(c) + sum((result(i:i+7, j:j+7) - gt(i:i+7, j:j+7)).^2, 'all');
+        err_s(c) = err_s(c) + sum((result_six(i:i+7, j:j+7) - gt(i:i+7, j:j+7)).^2, 'all');
     end
 end
 fout=fopen('./AIF_lena(512x512).raw', 'wb');
@@ -104,7 +104,7 @@ for i = 1:8:d_col
     for j = 1:8:d_row
         c = class(64*((i+7)/8 - 1)+(j+7)/8);
         if err_w(c) > err_s(c)
-            result(j:j+7, i:i+7) = result_six(j:j+7, i:i+7);
+            result(i:i+7, j:j+7) = result_six(i:i+7, j:j+7);
         end
     end
 end
